@@ -7,11 +7,17 @@
 #define DMA_YES GPIOC->BSRR = GPIO_Pin_14;
 #define DMA_NO 	GPIOC->BRR = GPIO_Pin_14;
 
+// default target is GPIO, define this to copy to SRAM
+#define TARGETMEMx
 
 // Every 28.444us DMA is started
-// on my original stm32, DMA activity shown on PC14 is 20.6us
-// eBay purchase stm32, DMA activity shown on PC14 is 26.1us
+// Alternate between kicking off DMA or doing a CPU copy
+// on my original stm32, DMA activity shown on PC14 is 20.6us, CPU activity is 15.0us 
+// eBay purchase stm32, DMA activity shown on PC14 is 26.6us, CPU activity is 15.8us
+// Conclusion is DMA slower on this..
+
 uint32_t DMABuffer[33];
+uint32_t target[33];
 
  void TIM4_IRQHandler(void)
 {
@@ -24,8 +30,34 @@ uint32_t DMABuffer[33];
 		// debugging indicators
 		DMA_YES;
 		
-		DMA1_Channel5->CCR = DMA_CCR5_MINC | DMA_CCR5_DIR | DMA_CCR5_TCIE | DMA_CCR5_EN;
-	
+		// alternate between using DMA and CPU
+		static uint16_t count = 0;
+		if (++count & 1)
+		{
+			DMA1_Channel5->CCR = DMA_CCR5_MINC | DMA_CCR5_DIR | DMA_CCR5_TCIE | DMA_CCR5_EN;
+		}
+		else
+		{
+			uint8_t *dst = (uint8_t *)target;
+			uint8_t *src = (uint8_t *)DMABuffer;
+			uint16_t i = 33;
+			while(i--)
+			{
+#ifdef MEM2MEM
+				*dst++ = *src++;
+				*dst++ = *src++;
+				*dst++ = *src++;
+				*dst++ = *src++;
+#else				
+				GPIOA->ODR = *src++;
+				GPIOA->ODR = *src++;
+				GPIOA->ODR = *src++;
+				GPIOA->ODR = *src++;
+#endif
+			}
+				
+			DMA_NO;
+		}
 	}
 }
 
